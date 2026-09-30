@@ -2895,12 +2895,13 @@ function Library:CreateWindow(config)
     })
     themed(settingsHolderIcon, "ImageColor3", "TextSub")
 
-    -- Pages
+    -- Pages (matched 1:1 with libsource.lua)
     local pages = new("Frame", {
         Name = "Pages", Parent = mainPage,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 12, 0, 73),
-        Size = UDim2.new(1, -12, 1, -73),
+        Position = UDim2.new(0, 0, 0.1083650216460228, 0),
+        Size = UDim2.new(0, 608, 0, 469),
+        BorderSizePixel = 0,
     })
     Window.Pages = pages
 
@@ -2941,8 +2942,13 @@ function Library:CreateWindow(config)
 
         local targetTab = Section.Tab
         task.delay(delaySeconds or 0, function()
-            -- Skip if user has already switched away from this tab.
-            if self.CurrentTab ~= targetTab then return end
+            -- Skip if user has already switched away from this tab or subtab.
+            if targetTab and targetTab.Tab then
+                if self.CurrentTab ~= targetTab.Tab then return end
+                if targetTab.Tab.CurrentSubTab ~= targetTab then return end
+            else
+                if self.CurrentTab ~= targetTab then return end
+            end
             local fadeInfo  = TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
             local scaleInfo = TweenInfo.new(0.5,  Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
             if sf:IsA("CanvasGroup") then
@@ -2955,7 +2961,17 @@ function Library:CreateWindow(config)
     end
 
     function Window:_animateTabIn(Tab)
-        for i, Section in ipairs(Tab.Sections) do
+        if Tab.SubTabs and #Tab.SubTabs > 0 and Tab.CurrentSubTab then
+            self:_animateSubTabIn(Tab.CurrentSubTab)
+        else
+            for i, Section in ipairs(Tab.Sections) do
+                self:_animateSectionEntrance(Section, (i - 1) * 0.05)
+            end
+        end
+    end
+
+    function Window:_animateSubTabIn(SubTab)
+        for i, Section in ipairs(SubTab.Sections) do
             self:_animateSectionEntrance(Section, (i - 1) * 0.05)
         end
     end
@@ -2971,7 +2987,14 @@ function Library:CreateWindow(config)
         query = (query or ""):lower()
         local empty = query == ""
         for _, tab in ipairs(self.Tabs) do
-            for _, section in ipairs(tab.Sections) do
+            local allSections = {}
+            for _, s in ipairs(tab.Sections) do table.insert(allSections, s) end
+            if tab.SubTabs then
+                for _, subTab in ipairs(tab.SubTabs) do
+                    for _, s in ipairs(subTab.Sections) do table.insert(allSections, s) end
+                end
+            end
+            for _, section in ipairs(allSections) do
                 local anyMatch = false
                 for _, comp in ipairs(section.Components) do
                     local match = empty
@@ -3032,6 +3055,8 @@ function Library:CreateWindow(config)
             Name = tabConfig.Name or "Tab",
             IconAsset = resolveIcon(tabConfig.Icon),
             Sections = {},
+            SubTabs = {},
+            CurrentSubTab = nil,
             _columnFlip = false,
             Active = false,
             Window = self,  -- so buildSection / components can reach PopupGui
@@ -3095,50 +3120,194 @@ function Library:CreateWindow(config)
         })
         Tab.Page = page
 
-        local scroll = new("ScrollingFrame", {
-            Parent = page,
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 0, 0, 4),
-            Size = UDim2.new(1, 0, 1, -4),
-            BorderSizePixel = 0,
-            ScrollBarThickness = 2,
-            ScrollBarImageColor3 = Theme.Accent,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            AutomaticCanvasSize = Enum.AutomaticSize.Y,
-            Active = true,
-        })
-        themed(scroll, "ScrollBarImageColor3", "Accent")
-        new("UIPadding", {Parent = scroll, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)})
-        new("UIListLayout", {
-            Parent = scroll,
-            FillDirection = Enum.FillDirection.Horizontal,
-            Padding = UDim.new(0, 12),
-            SortOrder = Enum.SortOrder.LayoutOrder,
-        })
+        -- Helper to create a Holder ScrollingFrame matching libsource.lua 1:1
+        local function createHolder(holderName, pos, size)
+            local sf = new("ScrollingFrame", {
+                Name = holderName or "Holder",
+                Parent = page,
+                BackgroundTransparency = 1,
+                Position = pos or UDim2.new(0, 0, 0.078891322016716, 0),
+                Size = size or UDim2.new(0, 603, 0, 431),
+                BorderSizePixel = 0,
+                ScrollBarThickness = 1,
+                ScrollBarImageColor3 = Theme.Accent,
+                CanvasSize = UDim2.new(0, 0, 0, 0),
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                Active = true,
+                Visible = false,
+            })
+            themed(sf, "ScrollBarImageColor3", "Accent")
+            new("UIPadding", {Parent = sf, PaddingLeft = UDim.new(0, 12)})
+            new("UIListLayout", {
+                Parent = sf,
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 12),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            })
 
-        Tab.LeftHolder = new("Frame", {
-            Name = "LeftHolder", Parent = scroll,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(0, 1, 0, 1),
-            AutomaticSize = Enum.AutomaticSize.XY,
-            LayoutOrder = 0,
-        })
-        new("UIListLayout", {Parent = Tab.LeftHolder, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})
+            local leftH = new("Frame", {
+                Name = "LeftHolder",
+                Parent = sf,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 1, 0, 1),
+                BorderSizePixel = 0,
+                AutomaticSize = Enum.AutomaticSize.XY,
+                LayoutOrder = 0,
+            })
+            new("UIListLayout", {Parent = leftH, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})
 
-        Tab.RightHolder = new("Frame", {
-            Name = "RightHolder", Parent = scroll,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(0, 1, 0, 1),
-            AutomaticSize = Enum.AutomaticSize.XY,
-            LayoutOrder = 1,
-        })
-        new("UIListLayout", {Parent = Tab.RightHolder, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})
+            local rightH = new("Frame", {
+                Name = "RightHolder",
+                Parent = sf,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 1, 0, 1),
+                BorderSizePixel = 0,
+                AutomaticSize = Enum.AutomaticSize.XY,
+                LayoutOrder = 1,
+            })
+            new("UIListLayout", {Parent = rightH, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder})
+
+            return sf, leftH, rightH
+        end
+
+        -- Default Holder (used when Tab has sections directly without subtabs)
+        local defaultHolder, defaultLeft, defaultRight = createHolder("Holder", UDim2.new(0, 0, 0.078891322016716, 0), UDim2.new(0, 603, 0, 431))
+        defaultHolder.Visible = true
+        Tab.DefaultHolder = defaultHolder
+        Tab.Holder = defaultHolder
+        Tab.LeftHolder = defaultLeft
+        Tab.RightHolder = defaultRight
 
         tabBtn.MouseButton1Click:Connect(function() self:SwitchTab(Tab) end)
 
         function Tab:AddSection(secConfig)
+            if #self.SubTabs > 0 and self.CurrentSubTab then
+                return self.CurrentSubTab:AddSection(secConfig)
+            end
             return buildSection(self, secConfig)
         end
+
+        function Tab:AddSubTab(subConfig)
+            if type(subConfig) == "string" then
+                subConfig = { Name = subConfig }
+            end
+            subConfig = subConfig or {}
+            local name = subConfig.Name or ("SubTab " .. (#self.SubTabs + 1))
+
+            -- If this is the first subtab and defaultHolder has no direct sections, hide defaultHolder
+            if #self.Sections == 0 and self.DefaultHolder then
+                self.DefaultHolder.Visible = false
+            end
+
+            -- Ensure SubHolder exists on this tab's page (matches libsource.lua 1:1)
+            if not self.SubHolder then
+                local subHolder = new("Frame", {
+                    Name = "SubHolder",
+                    Parent = self.Page,
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0.04440789297223091, 0, 0, 0),
+                    Size = UDim2.new(0, 1, 0, 1),
+                    BorderSizePixel = 0,
+                    AutomaticSize = Enum.AutomaticSize.XY,
+                    ZIndex = 3,
+                })
+                new("UIListLayout", {
+                    Parent = subHolder,
+                    Padding = UDim.new(0, 12),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    FillDirection = Enum.FillDirection.Horizontal,
+                })
+                self.SubHolder = subHolder
+            end
+
+            -- Option button (matches libsource.lua: Font 12187365364 Medium, TextSize 16)
+            local optionBtn = new("TextButton", {
+                Name = "Option",
+                Parent = self.SubHolder,
+                Text = name,
+                FontFace = FONT_MED,
+                TextSize = 16,
+                TextColor3 = Theme.TextDisabled,
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                AutomaticSize = Enum.AutomaticSize.XY,
+                Size = UDim2.new(0, 1, 0, 1),
+                AutoButtonColor = false,
+                LayoutOrder = #self.SubTabs,
+                ZIndex = 4,
+            })
+
+            -- SubTab's own ScrollingFrame matching libsource.lua Holder exactly
+            local holder, leftHolder, rightHolder = createHolder(name .. "_Holder", UDim2.new(0, 0, 0.078891322016716, 0), UDim2.new(0, 603, 0, 431))
+
+            local SubTab = {
+                Name = name,
+                Button = optionBtn,
+                Holder = holder,
+                LeftHolder = leftHolder,
+                RightHolder = rightHolder,
+                Sections = {},
+                _columnFlip = false,
+                Active = false,
+                Tab = self,
+                Window = self.Window,
+            }
+
+            optionBtn.MouseEnter:Connect(function()
+                if not SubTab.Active then
+                    tween(optionBtn, {TextColor3 = Color3.fromRGB(180, 180, 180)}, TI_QUICK)
+                end
+            end)
+            optionBtn.MouseLeave:Connect(function()
+                if not SubTab.Active then
+                    tween(optionBtn, {TextColor3 = Theme.TextDisabled}, TI_QUICK)
+                end
+            end)
+
+            optionBtn.MouseButton1Click:Connect(function()
+                self:SwitchSubTab(SubTab)
+            end)
+
+            function SubTab:AddSection(secConfig)
+                return buildSection(self, secConfig)
+            end
+
+            function SubTab:Select()
+                self.Tab:SwitchSubTab(self)
+            end
+
+            table.insert(self.SubTabs, SubTab)
+
+            -- Automatically activate the first subtab
+            if #self.SubTabs == 1 then
+                self:SwitchSubTab(SubTab)
+            end
+
+            return SubTab
+        end
+
+        function Tab:SwitchSubTab(targetSubTab)
+            for _, st in ipairs(self.SubTabs) do
+                local active = st == targetSubTab
+                st.Active = active
+                st.Holder.Visible = active
+                tween(st.Button, {TextColor3 = active and Theme.Text or Theme.TextDisabled}, TI_QUICK)
+            end
+            self.CurrentSubTab = targetSubTab
+
+            if self.Window and self.Window._animateSubTabIn then
+                self.Window:_animateSubTabIn(targetSubTab)
+            end
+        end
+
+        -- SubTab live theme updates
+        local function applySubTabColors()
+            for _, st in ipairs(Tab.SubTabs) do
+                st.Button.TextColor3 = st.Active and Theme.Text or Theme.TextDisabled
+            end
+        end
+        subscribeTheme("Text", applySubTabColors)
+        subscribeTheme("TextDisabled", applySubTabColors)
 
         table.insert(self.Tabs, Tab)
         if #self.Tabs == 1 then self:SwitchTab(Tab) end
@@ -4848,7 +5017,9 @@ buildSection = function(Tab, config)
         -- First-load case: SwitchTab fires before any sections exist, so its
         -- cascade has nothing to animate. Catch newly-added sections to the
         -- currently-visible tab here so they pop in as they're created.
-        if Tab.Window and Tab.Window.CurrentTab == Tab and Tab.Window._animateSectionEntrance then
+        local isCurrent = (Tab.Window and Tab.Window.CurrentTab == Tab)
+            or (Tab.Tab and Tab.Window and Tab.Window.CurrentTab == Tab.Tab and Tab.Tab.CurrentSubTab == Tab)
+        if isCurrent and Tab.Window and Tab.Window._animateSectionEntrance then
             Tab.Window:_animateSectionEntrance(Section, 0)
         end
     end
